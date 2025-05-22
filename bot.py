@@ -7,10 +7,8 @@ from dotenv import load_dotenv
 
 RELOAD_FLAG = 'reload.flag'
 
-# Загрузка переменных окружения
 load_dotenv()
 
-# Инициализация бота с токеном из .env
 TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_ID = os.getenv('ADMIN_ID')
 if not TOKEN:
@@ -21,7 +19,6 @@ ADMIN_ID = int(ADMIN_ID)
 
 bot = telebot.TeleBot(TOKEN)
 
-# Загрузка данных о ноутбуках
 def load_data():
     try:
         return pd.read_csv('corrected_data.csv')
@@ -31,7 +28,6 @@ def load_data():
 def get_available_options(df, column):
     return sorted(df[column].unique().tolist())
 
-# Клавиатура выбора характеристик
 def create_spec_keyboard():
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
     keyboard.row('Размер экрана 📏', 'Герцовка 🔄', 'Разрешение 🖥️')
@@ -40,7 +36,6 @@ def create_spec_keyboard():
     keyboard.row('Сбросить 🔁')
     return keyboard
 
-# Главное меню
 def create_main_keyboard(is_admin=False):
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
     keyboard.row('Начать подбор 🚀', 'Помощь ℹ️')
@@ -49,7 +44,6 @@ def create_main_keyboard(is_admin=False):
         keyboard.row('Перезагрузить бота 🔄')
     return keyboard
 
-# Словарь соответствия характеристик и колонок
 def get_spec_mapping():
     return {
         'Размер экрана': 'Screen Size',
@@ -61,7 +55,6 @@ def get_spec_mapping():
         'Накопитель': 'Storage'
     }
 
-# Хранение предпочтений пользователя
 user_preferences = {}
 
 def create_options_keyboard(options, spec):
@@ -143,7 +136,7 @@ def back_to_main(message):
 @bot.message_handler(func=lambda message: message.text in ['Размер экрана 📏', 'Герцовка 🔄', 'Разрешение 🖥️', 
                                                          'Процессор 💻', 'Видеокарта 🎮', 'Оперативная память 💾', 'Накопитель 💿'])
 def handle_spec_selection(message):
-    display_spec = ' '.join(message.text.split()[:-1])  # Убираем эмодзи
+    display_spec = ' '.join(message.text.split()[:-1]) 
     spec_mapping = get_spec_mapping()
     spec = spec_mapping[display_spec]
     df = load_data()
@@ -166,10 +159,23 @@ def handle_callback(call):
     if call.message.chat.id not in user_preferences:
         user_preferences[call.message.chat.id] = {}
     user_preferences[call.message.chat.id][spec] = value
-    bot.answer_callback_query(call.id, f"✅ {spec} установлено: {value}")
+    column_rus_emoji = {
+        'Screen Size': '📏 Размер экрана',
+        'Refresh Rate': '🔄 Частота обновления',
+        'Resolution': '🖥️ Разрешение экрана',
+        'Processor': '💻 Процессор',
+        'Graphics Card': '🎮 Видеокарта',
+        'RAM': '💾 Объем оперативной памяти',
+        'Storage': '💿 Объем постоянной памяти',
+        'Price': '💰 Цена',
+        'Model': 'Модель'
+    }
+    rus_emoji = column_rus_emoji.get(spec, spec)
+    bot.answer_callback_query(call.id, f"✅ {rus_emoji} установлено: {value}")
+    selected_specs = [f"• {column_rus_emoji.get(k, k)}: {v}" for k, v in user_preferences[call.message.chat.id].items()]
     bot.edit_message_text(
-        f"✅ {spec} установлено: {value}\n\nТекущие выбранные характеристики:\n" + 
-        "\n".join([f"• {k}: {v}" for k, v in user_preferences[call.message.chat.id].items()]),
+        f"✅ {rus_emoji} установлено: {value}\n\nТекущие выбранные характеристики:\n" + 
+        "\n".join(selected_specs),
         call.message.chat.id,
         call.message.message_id
     )
@@ -190,7 +196,6 @@ def find_laptops(message):
     if filtered_df.empty:
         bot.send_message(message.chat.id, "🔍 Не найдено ноутбуков, соответствующих вашим критериям!")
     else:
-        # Сопоставление колонок и русских названий с эмодзи
         column_rus_emoji = {
             'Model': 'Модель',
             'Screen Size': '📏 Размер экрана',
@@ -208,17 +213,14 @@ def find_laptops(message):
                 if column not in ['Images', 'Link']:
                     value = laptop[column]
                     rus_emoji = column_rus_emoji.get(column, column)
-                    # Добавляем единицы измерения для некоторых полей
                     if column == 'Refresh Rate':
                         result += f"{rus_emoji}: {value} Гц\n"
                     elif column == 'Price':
                         result += f"{rus_emoji}: {value}\n"
                     else:
                         result += f"{rus_emoji}: {value}\n"
-            # Добавляем ссылку, если есть
             if 'Link' in df.columns and pd.notna(laptop['Link']) and str(laptop['Link']).strip():
                 result += f"🔗 [Ссылка на ноутбук]({laptop['Link']})\n"
-            # Отправка фото, если есть
             if 'Images' in df.columns and pd.notna(laptop['Images']):
                 images = [url.strip() for url in str(laptop['Images']).split(',') if url.strip()]
                 if len(images) == 1:
@@ -243,12 +245,10 @@ def clear_chat(message):
         bot.send_message(message.chat.id, "⛔️ У вас нет прав для этой операции.")
         return
     cleaning_msg = bot.send_message(message.chat.id, "🧹 Очищаю чат...")
-    # Сразу удаляем сообщение 'Очищаю чат...'
     try:
         bot.delete_message(message.chat.id, cleaning_msg.message_id)
     except Exception:
         pass
-    # Удаляем последние 100 сообщений (бот может удалять только свои и, если админ, чужие тоже)
     try:
         for msg_id in range(message.message_id, message.message_id-100, -1):
             try:
