@@ -192,21 +192,25 @@ def find_laptops(message):
         for _, laptop in filtered_df.iterrows():
             result = "💻 Найден ноутбук:\n"
             for column in df.columns:
-                if column != 'Images':
+                if column not in ['Images', 'Link']:
                     result += f"{column}: {laptop[column]}\n"
+            # Добавляем ссылку, если есть
+            if 'Link' in df.columns and pd.notna(laptop['Link']) and str(laptop['Link']).strip():
+                result += f"🔗 [Ссылка на ноутбук]({laptop['Link']})\n"
             # Отправка фото, если есть
             if 'Images' in df.columns and pd.notna(laptop['Images']):
                 images = [url.strip() for url in str(laptop['Images']).split(',') if url.strip()]
                 if len(images) == 1:
-                    bot.send_photo(message.chat.id, images[0], caption=result)
+                    bot.send_photo(message.chat.id, images[0], caption=result, parse_mode='Markdown')
                 elif len(images) > 1:
                     media = [types.InputMediaPhoto(url) for url in images]
                     media[0].caption = result
+                    media[0].parse_mode = 'Markdown'
                     bot.send_media_group(message.chat.id, media)
                 else:
-                    bot.send_message(message.chat.id, result)
+                    bot.send_message(message.chat.id, result, parse_mode='Markdown')
             else:
-                bot.send_message(message.chat.id, result)
+                bot.send_message(message.chat.id, result, parse_mode='Markdown')
 
 @bot.message_handler(func=lambda message: message.text == 'Помощь ℹ️')
 def help_button(message):
