@@ -184,6 +184,10 @@ def find_laptops(message):
                 result += f"{column}: {laptop[column]}\n"
             bot.send_message(message.chat.id, result)
 
+@bot.message_handler(func=lambda message: message.text == 'Помощь ℹ️')
+def help_button(message):
+    help(message)
+
 if __name__ == '__main__':
     if os.path.exists(RELOAD_FLAG):
         with open(RELOAD_FLAG, 'r') as f:
