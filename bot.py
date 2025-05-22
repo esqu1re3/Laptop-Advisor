@@ -3,6 +3,9 @@ import pandas as pd
 import os
 import sys
 from telebot import types
+from telebot.async_telebot import AsyncTeleBot
+import asyncio
+import logging
 from dotenv import load_dotenv
 
 RELOAD_FLAG = 'reload.flag'
@@ -17,7 +20,11 @@ if not ADMIN_ID:
     raise ValueError("ADMIN_ID не найден в .env файле")
 ADMIN_ID = int(ADMIN_ID)
 
-bot = telebot.TeleBot(TOKEN)
+# Логирование
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+logger = logging.getLogger(__name__)
+
+bot = AsyncTeleBot(TOKEN)
 
 def load_data():
     try:
@@ -56,6 +63,8 @@ def get_spec_mapping():
     }
 
 user_preferences = {}
+user_ids = set()
+filter_stats = {}
 
 def create_options_keyboard(options, spec):
     keyboard = types.InlineKeyboardMarkup(row_width=2)
@@ -73,18 +82,35 @@ def get_filtered_options(df, user_prefs):
             filtered_df = filtered_df[filtered_df[spec].astype(str).str.contains(str(value), case=False)]
     return filtered_df
 
+def get_user_log_name(user):
+    uname = user.username if hasattr(user, 'username') and user.username else None
+    fname = user.first_name or ''
+    lname = user.last_name or ''
+    full_name = (fname + ' ' + lname).strip()
+    if uname:
+        # Если username и имя совпадают, не дублируем
+        if uname.lower() == full_name.lower():
+            return f"@{uname}"
+        else:
+            return f"@{uname} ({full_name})"
+    else:
+        return full_name
+
 @bot.message_handler(commands=['start'])
-def start(message):
+async def start(message):
     user_preferences[message.chat.id] = {}
+    user_ids.add(message.chat.id)
+    user_log_name = get_user_log_name(message.from_user)
+    logger.info(f"Пользователь {user_log_name} начал работу. Всего пользователей: {len(user_ids)}")
     is_admin = (message.from_user.id == ADMIN_ID)
-    bot.send_message(message.chat.id, 
+    await bot.send_message(message.chat.id, 
                      "👋 Добро пожаловать в бот подбора ноутбуков! 🖥️\n"
                      "Я помогу вам найти идеальный ноутбук по вашим предпочтениям.\n"
                      "Используйте /help для просмотра доступных команд.",
                      reply_markup=create_main_keyboard(is_admin))
 
 @bot.message_handler(commands=['help'])
-def help(message):
+async def help(message):
     help_text = (
         "📋 Доступные команды:\n"
         "/start - Запустить бота 🚀\n"
@@ -93,68 +119,68 @@ def help(message):
         "/reset - Сбросить выбранные характеристики 🔁\n\n"
         "Для подбора ноутбука нажмите 'Начать подбор 🚀' и следуйте инструкциям."
     )
-    bot.send_message(message.chat.id, help_text)
+    await bot.send_message(message.chat.id, help_text)
 
 @bot.message_handler(commands=['reload'])
-def reload(message):
+async def reload(message):
     if message.from_user.id != ADMIN_ID:
-        bot.send_message(message.chat.id, "⛔️ У вас нет прав для перезагрузки бота.")
+        await bot.send_message(message.chat.id, "⛔️ У вас нет прав для перезагрузки бота.")
         return
-    bot.send_message(message.chat.id, "🔄 Перезагрузка бота...")
+    await bot.send_message(message.chat.id, "🔄 Перезагрузка бота...")
     with open(RELOAD_FLAG, 'w') as f:
         f.write(str(message.chat.id))
     python = sys.executable
     os.execl(python, python, *sys.argv)
 
 @bot.message_handler(commands=['reset'])
-def reset(message):
+async def reset(message):
     user_preferences[message.chat.id] = {}
-    bot.send_message(message.chat.id, "🔄 Все выбранные характеристики сброшены!", 
+    await bot.send_message(message.chat.id, "🔄 Все выбранные характеристики сброшены!", 
                      reply_markup=create_main_keyboard())
 
 @bot.message_handler(func=lambda message: message.text == 'Сбросить 🔁')
-def reset_button(message):
+async def reset_button(message):
     user_preferences[message.chat.id] = {}
-    bot.send_message(message.chat.id, "🔄 Все выбранные характеристики сброшены!")
-    bot.send_message(message.chat.id, 
+    await bot.send_message(message.chat.id, "🔄 Все выбранные характеристики сброшены!")
+    await bot.send_message(message.chat.id, 
                      "🔍 Выберите характеристику, которую хотите установить:",
                      reply_markup=create_spec_keyboard())
 
 @bot.message_handler(func=lambda message: message.text == 'Начать подбор 🚀')
-def start_selection(message):
-    bot.send_message(message.chat.id, 
+async def start_selection(message):
+    await bot.send_message(message.chat.id, 
                      "🔍 Выберите характеристику, которую хотите установить:",
                      reply_markup=create_spec_keyboard())
 
 @bot.message_handler(func=lambda message: message.text == 'В меню ↩️')
-def back_to_main(message):
+async def back_to_main(message):
     is_admin = (message.from_user.id == ADMIN_ID)
-    bot.send_message(message.chat.id, 
+    await bot.send_message(message.chat.id, 
                      "🏠 Главное меню:",
                      reply_markup=create_main_keyboard(is_admin))
 
 @bot.message_handler(func=lambda message: message.text in ['Размер экрана 📏', 'Герцовка 🔄', 'Разрешение 🖥️', 
                                                          'Процессор 💻', 'Видеокарта 🎮', 'Оперативная память 💾', 'Накопитель 💿'])
-def handle_spec_selection(message):
+async def handle_spec_selection(message):
     display_spec = ' '.join(message.text.split()[:-1]) 
     spec_mapping = get_spec_mapping()
     spec = spec_mapping[display_spec]
     df = load_data()
     if df.empty:
-        bot.send_message(message.chat.id, "❌ Нет данных о ноутбуках!")
+        await bot.send_message(message.chat.id, "❌ Нет данных о ноутбуках!")
         return
     filtered_df = get_filtered_options(df, user_preferences.get(message.chat.id, {}))
     available_options = get_available_options(filtered_df, spec)
     if not available_options:
-        bot.send_message(message.chat.id, "❌ Нет доступных опций для этой характеристики с текущими фильтрами!")
+        await bot.send_message(message.chat.id, "❌ Нет доступных опций для этой характеристики с текущими фильтрами!")
         return
     options_text = f"Доступные варианты для '{display_spec}':\n" + "\n".join([f"• {option}" for option in available_options])
-    bot.send_message(message.chat.id, 
+    await bot.send_message(message.chat.id, 
                      f"Выберите {display_spec}:\n\n{options_text}",
                      reply_markup=create_options_keyboard(available_options, spec))
 
 @bot.callback_query_handler(func=lambda call: True)
-def handle_callback(call):
+async def handle_callback(call):
     spec, value = call.data.split(':')
     if call.message.chat.id not in user_preferences:
         user_preferences[call.message.chat.id] = {}
@@ -171,109 +197,118 @@ def handle_callback(call):
         'Model': 'Модель'
     }
     rus_emoji = column_rus_emoji.get(spec, spec)
-    bot.answer_callback_query(call.id, f"✅ {rus_emoji} установлено: {value}")
+    await bot.answer_callback_query(call.id, f"✅ {rus_emoji} установлено: {value}")
     selected_specs = [f"• {column_rus_emoji.get(k, k)}: {v}" for k, v in user_preferences[call.message.chat.id].items()]
-    bot.edit_message_text(
+    await bot.edit_message_text(
         f"✅ {rus_emoji} установлено: {value}\n\nТекущие выбранные характеристики:\n" + 
         "\n".join(selected_specs),
         call.message.chat.id,
         call.message.message_id
     )
+    filter_stats[spec] = filter_stats.get(spec, 0) + 1
 
 @bot.message_handler(func=lambda message: message.text == 'Найти ноутбуки 🔍')
-def find_laptops(message):
-    if message.chat.id not in user_preferences or not user_preferences[message.chat.id]:
-        bot.send_message(message.chat.id, "⚠️ Сначала выберите хотя бы одну характеристику!")
-        return
-    df = load_data()
-    if df.empty:
-        bot.send_message(message.chat.id, "❌ Нет данных о ноутбуках!")
-        return
-    filtered_df = df.copy()
-    for spec, value in user_preferences[message.chat.id].items():
-        if spec in df.columns:
-            filtered_df = filtered_df[filtered_df[spec].astype(str).str.contains(str(value), case=False)]
-    if filtered_df.empty:
-        bot.send_message(message.chat.id, "🔍 Не найдено ноутбуков, соответствующих вашим критериям!")
-    else:
-        column_rus_emoji = {
-            'Model': 'Модель',
-            'Screen Size': '📏 Размер экрана',
-            'Refresh Rate': '🔄 Частота обновления',
-            'Resolution': '🖥️ Разрешение экрана',
-            'Processor': '💻 Процессор',
-            'Graphics Card': '🎮 Видеокарта',
-            'RAM': '💾 Объем оперативной памяти',
-            'Storage': '💿 Объем постоянной памяти',
-            'Price': '💰 Цена'
-        }
-        for _, laptop in filtered_df.iterrows():
-            result = "💻 Найден ноутбук:\n"
-            for column in df.columns:
-                if column not in ['Images', 'Link']:
-                    value = laptop[column]
-                    rus_emoji = column_rus_emoji.get(column, column)
-                    if column == 'Refresh Rate':
-                        result += f"{rus_emoji}: {value} Гц\n"
-                    elif column == 'Price':
-                        result += f"{rus_emoji}: {value}\n"
+async def find_laptops(message):
+    try:
+        if message.chat.id not in user_preferences or not user_preferences[message.chat.id]:
+            await bot.send_message(message.chat.id, "⚠️ Сначала выберите хотя бы одну характеристику!")
+            return
+        df = load_data()
+        if df.empty:
+            await bot.send_message(message.chat.id, "❌ Нет данных о ноутбуках!")
+            return
+        filtered_df = df.copy()
+        for spec, value in user_preferences[message.chat.id].items():
+            if spec in df.columns:
+                filtered_df = filtered_df[filtered_df[spec].astype(str).str.contains(str(value), case=False)]
+        if filtered_df.empty:
+            await bot.send_message(message.chat.id, "🔍 Не найдено ноутбуков, соответствующих вашим критериям!")
+        else:
+            await bot.send_message(message.chat.id, f"🔎 Найдено моделей: {len(filtered_df)}")
+            column_rus_emoji = {
+                'Model': 'Модель',
+                'Screen Size': '📏 Размер экрана',
+                'Refresh Rate': '🔄 Частота обновления',
+                'Resolution': '🖥️ Разрешение экрана',
+                'Processor': '💻 Процессор',
+                'Graphics Card': '🎮 Видеокарта',
+                'RAM': '💾 Объем оперативной памяти',
+                'Storage': '💿 Объем постоянной памяти',
+                'Price': '💰 Цена'
+            }
+            for _, laptop in filtered_df.iterrows():
+                result = "💻 Найден ноутбук:\n"
+                for column in df.columns:
+                    if column not in ['Images', 'Link']:
+                        value = laptop[column]
+                        rus_emoji = column_rus_emoji.get(column, column)
+                        if column == 'Refresh Rate':
+                            result += f"{rus_emoji}: {value} Гц\n"
+                        elif column == 'Price':
+                            result += f"{rus_emoji}: {value}\n"
+                        else:
+                            result += f"{rus_emoji}: {value}\n"
+                if 'Link' in df.columns and pd.notna(laptop['Link']) and str(laptop['Link']).strip():
+                    result += f"🔗 [Ссылка на ноутбук]({laptop['Link']})\n"
+                if 'Images' in df.columns and pd.notna(laptop['Images']):
+                    images = [url.strip() for url in str(laptop['Images']).split(',') if url.strip()]
+                    if len(images) == 1:
+                        await bot.send_photo(message.chat.id, images[0], caption=result, parse_mode='Markdown')
+                    elif len(images) > 1:
+                        media = [types.InputMediaPhoto(url) for url in images]
+                        media[0].caption = result
+                        media[0].parse_mode = 'Markdown'
+                        await bot.send_media_group(message.chat.id, media)
                     else:
-                        result += f"{rus_emoji}: {value}\n"
-            if 'Link' in df.columns and pd.notna(laptop['Link']) and str(laptop['Link']).strip():
-                result += f"🔗 [Ссылка на ноутбук]({laptop['Link']})\n"
-            if 'Images' in df.columns and pd.notna(laptop['Images']):
-                images = [url.strip() for url in str(laptop['Images']).split(',') if url.strip()]
-                if len(images) == 1:
-                    bot.send_photo(message.chat.id, images[0], caption=result, parse_mode='Markdown')
-                elif len(images) > 1:
-                    media = [types.InputMediaPhoto(url) for url in images]
-                    media[0].caption = result
-                    media[0].parse_mode = 'Markdown'
-                    bot.send_media_group(message.chat.id, media)
+                        await bot.send_message(message.chat.id, result, parse_mode='Markdown')
                 else:
-                    bot.send_message(message.chat.id, result, parse_mode='Markdown')
-            else:
-                bot.send_message(message.chat.id, result, parse_mode='Markdown')
+                    await bot.send_message(message.chat.id, result, parse_mode='Markdown')
+    except Exception as e:
+        user_log_name = get_user_log_name(message.from_user)
+        logger.exception(f"Ошибка при поиске ноутбуков для пользователя {user_log_name} (id={message.chat.id})")
+        await bot.send_message(message.chat.id, "❌ Произошла ошибка при поиске ноутбуков!")
 
 @bot.message_handler(func=lambda message: message.text == 'Помощь ℹ️')
-def help_button(message):
-    help(message)
+async def help_button(message):
+    await help(message)
 
 @bot.message_handler(func=lambda message: message.text == 'Очистить чат 🧹')
-def clear_chat(message):
+async def clear_chat(message):
     if message.from_user.id != ADMIN_ID:
-        bot.send_message(message.chat.id, "⛔️ У вас нет прав для этой операции.")
+        await bot.send_message(message.chat.id, "⛔️ У вас нет прав для этой операции.")
         return
-    cleaning_msg = bot.send_message(message.chat.id, "🧹 Очищаю чат...")
+    cleaning_msg = await bot.send_message(message.chat.id, "🧹 Очищаю чат...")
     try:
-        bot.delete_message(message.chat.id, cleaning_msg.message_id)
+        await bot.delete_message(message.chat.id, cleaning_msg.message_id)
     except Exception:
         pass
     try:
         for msg_id in range(message.message_id, message.message_id-100, -1):
             try:
-                bot.delete_message(message.chat.id, msg_id)
+                await bot.delete_message(message.chat.id, msg_id)
             except Exception:
                 pass
     except Exception:
         pass
 
 @bot.message_handler(func=lambda message: message.text == 'Перезагрузить бота 🔄')
-def reload_button(message):
+async def reload_button(message):
     if message.from_user.id != ADMIN_ID:
-        bot.send_message(message.chat.id, "⛔️ У вас нет прав для перезагрузки бота.")
+        await bot.send_message(message.chat.id, "⛔️ У вас нет прав для перезагрузки бота.")
         return
-    bot.send_message(message.chat.id, "🔄 Перезагрузка бота...")
+    await bot.send_message(message.chat.id, "🔄 Перезагрузка бота...")
     with open(RELOAD_FLAG, 'w') as f:
         f.write(str(message.chat.id))
     python = sys.executable
     os.execl(python, python, *sys.argv)
 
 if __name__ == '__main__':
-    if os.path.exists(RELOAD_FLAG):
-        with open(RELOAD_FLAG, 'r') as f:
-            chat_id = int(f.read().strip())
-        bot.send_message(chat_id, "✅ Бот успешно перезагружен!")
-        os.remove(RELOAD_FLAG)
-    print("🤖 Бот запущен...")
-    bot.polling(none_stop=True)
+    async def main():
+        if os.path.exists(RELOAD_FLAG):
+            with open(RELOAD_FLAG, 'r') as f:
+                chat_id = int(f.read().strip())
+            await bot.send_message(chat_id, "✅ Бот успешно перезагружен!")
+            os.remove(RELOAD_FLAG)
+        logger.info("🤖 Бот запущен...")
+        await bot.polling(none_stop=True)
+    asyncio.run(main())
