@@ -24,7 +24,7 @@ bot = telebot.TeleBot(TOKEN)
 # Загрузка данных о ноутбуках
 def load_data():
     try:
-        return pd.read_csv('data.csv')
+        return pd.read_csv('corrected_data.csv')
     except FileNotFoundError:
         return pd.DataFrame()
 
@@ -46,6 +46,7 @@ def create_main_keyboard(is_admin=False):
     keyboard.row('Начать подбор 🚀', 'Помощь ℹ️')
     if is_admin:
         keyboard.row('Очистить чат 🧹')
+        keyboard.row('Перезагрузить бота 🔄')
     return keyboard
 
 # Словарь соответствия характеристик и колонок
@@ -189,11 +190,25 @@ def find_laptops(message):
     if filtered_df.empty:
         bot.send_message(message.chat.id, "🔍 Не найдено ноутбуков, соответствующих вашим критериям!")
     else:
+        # Сопоставление колонок и русских названий
+        column_rus = {
+            'Model': 'Модель',
+            'Screen Size': 'Размер экрана',
+            'Refresh Rate': 'Герцовка',
+            'Resolution': 'Разрешение',
+            'Processor': 'Процессор',
+            'Graphics Card': 'Видеокарта',
+            'RAM': 'Оперативная память',
+            'Storage': 'Накопитель',
+            'Price': 'Цена'
+        }
         for _, laptop in filtered_df.iterrows():
             result = "💻 Найден ноутбук:\n"
             for column in df.columns:
                 if column not in ['Images', 'Link']:
-                    result += f"{column}: {laptop[column]}\n"
+                    value = laptop[column]
+                    rus_name = column_rus.get(column, column)
+                    result += f"{rus_name}: {value}\n"
             # Добавляем ссылку, если есть
             if 'Link' in df.columns and pd.notna(laptop['Link']) and str(laptop['Link']).strip():
                 result += f"🔗 [Ссылка на ноутбук]({laptop['Link']})\n"
@@ -236,6 +251,17 @@ def clear_chat(message):
                 pass
     except Exception:
         pass
+
+@bot.message_handler(func=lambda message: message.text == 'Перезагрузить бота 🔄')
+def reload_button(message):
+    if message.from_user.id != ADMIN_ID:
+        bot.send_message(message.chat.id, "⛔️ У вас нет прав для перезагрузки бота.")
+        return
+    bot.send_message(message.chat.id, "🔄 Перезагрузка бота...")
+    with open(RELOAD_FLAG, 'w') as f:
+        f.write(str(message.chat.id))
+    python = sys.executable
+    os.execl(python, python, *sys.argv)
 
 if __name__ == '__main__':
     if os.path.exists(RELOAD_FLAG):
