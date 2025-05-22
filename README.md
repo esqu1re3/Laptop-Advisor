@@ -58,7 +58,7 @@ Graphics Card: NVIDIA RTX 5070 Ti 12GB
 RAM: 16GB DDR5 5600MHz
 Storage: 512GB NVMe SSD Gen 4x4
 Price: 2120
-🔗 [Ссылка на ноутбук](https://www.instagram.com/p/DJnsLf4o5Pf/?img_index=1)
+🔗 [Ссылка на ноутбук]
 ```
 
 ## Технические требования 💻
