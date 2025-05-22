@@ -12,8 +12,12 @@ load_dotenv()
 
 # Инициализация бота с токеном из .env
 TOKEN = os.getenv('BOT_TOKEN')
+ADMIN_ID = os.getenv('ADMIN_ID')
 if not TOKEN:
     raise ValueError("Токен бота не найден в .env файле")
+if not ADMIN_ID:
+    raise ValueError("ADMIN_ID не найден в .env файле")
+ADMIN_ID = int(ADMIN_ID)
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -96,6 +100,9 @@ def help(message):
 
 @bot.message_handler(commands=['reload'])
 def reload(message):
+    if message.from_user.id != ADMIN_ID:
+        bot.send_message(message.chat.id, "⛔️ У вас нет прав для перезагрузки бота.")
+        return
     bot.send_message(message.chat.id, "🔄 Перезагрузка бота...")
     with open(RELOAD_FLAG, 'w') as f:
         f.write(str(message.chat.id))
@@ -181,8 +188,21 @@ def find_laptops(message):
         for _, laptop in filtered_df.iterrows():
             result = "💻 Найден ноутбук:\n"
             for column in df.columns:
-                result += f"{column}: {laptop[column]}\n"
-            bot.send_message(message.chat.id, result)
+                if column != 'Images':
+                    result += f"{column}: {laptop[column]}\n"
+            # Отправка фото, если есть
+            if 'Images' in df.columns and pd.notna(laptop['Images']):
+                images = [url.strip() for url in str(laptop['Images']).split(',') if url.strip()]
+                if len(images) == 1:
+                    bot.send_photo(message.chat.id, images[0], caption=result)
+                elif len(images) > 1:
+                    media = [types.InputMediaPhoto(url) for url in images]
+                    media[0].caption = result
+                    bot.send_media_group(message.chat.id, media)
+                else:
+                    bot.send_message(message.chat.id, result)
+            else:
+                bot.send_message(message.chat.id, result)
 
 @bot.message_handler(func=lambda message: message.text == 'Помощь ℹ️')
 def help_button(message):
