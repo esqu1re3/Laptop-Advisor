@@ -7,17 +7,17 @@ from dotenv import load_dotenv
 
 RELOAD_FLAG = 'reload.flag'
 
-# Load environment variables
+# Загрузка переменных окружения
 load_dotenv()
 
-# Initialize bot with token from .env
+# Инициализация бота с токеном из .env
 TOKEN = os.getenv('BOT_TOKEN')
 if not TOKEN:
-    raise ValueError("No BOT_TOKEN found in .env file")
+    raise ValueError("Токен бота не найден в .env файле")
 
 bot = telebot.TeleBot(TOKEN)
 
-# Load laptop data
+# Загрузка данных о ноутбуках
 def load_data():
     try:
         return pd.read_csv('data.csv')
@@ -27,34 +27,35 @@ def load_data():
 def get_available_options(df, column):
     return sorted(df[column].unique().tolist())
 
-# Create keyboard for specifications
+# Клавиатура выбора характеристик
 def create_spec_keyboard():
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.row('Screen Size 📏', 'Refresh Rate 🔄', 'Resolution 🖥️')
-    keyboard.row('Processor 💻', 'Graphics Card 🎮', 'RAM 💾')
-    keyboard.row('Storage 💿', 'Find Laptops 🔍', 'Back to Main ↩️')
-    keyboard.row('Reset 🔁')
+    keyboard.row('Размер экрана 📏', 'Герцовка 🔄', 'Разрешение 🖥️')
+    keyboard.row('Процессор 💻', 'Видеокарта 🎮', 'Оперативная память 💾')
+    keyboard.row('Накопитель 💿', 'Найти ноутбуки 🔍', 'В меню ↩️')
+    keyboard.row('Сбросить 🔁')
     return keyboard
 
-# Create keyboard for main menu
+# Главное меню
 def create_main_keyboard():
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.row('Start Selection 🚀', 'Help ℹ️')
+    keyboard.row('Начать подбор 🚀', 'Помощь ℹ️')
     return keyboard
 
-# Store user preferences
-user_preferences = {}
+# Словарь соответствия характеристик и колонок
+def get_spec_mapping():
+    return {
+        'Размер экрана': 'Screen Size',
+        'Герцовка': 'Refresh Rate',
+        'Разрешение': 'Resolution',
+        'Процессор': 'Processor',
+        'Видеокарта': 'Graphics Card',
+        'Оперативная память': 'RAM',
+        'Накопитель': 'Storage'
+    }
 
-# Map display names to CSV column names
-SPEC_MAPPING = {
-    'Screen Size': 'Screen Size',
-    'Refresh Rate': 'Refresh Rate',
-    'Resolution': 'Resolution',
-    'Processor': 'Processor',
-    'Graphics Card': 'Graphics Card',
-    'RAM': 'RAM',
-    'Storage': 'Storage'
-}
+# Хранение предпочтений пользователя
+user_preferences = {}
 
 def create_options_keyboard(options, spec):
     keyboard = types.InlineKeyboardMarkup(row_width=2)
@@ -76,26 +77,26 @@ def get_filtered_options(df, user_prefs):
 def start(message):
     user_preferences[message.chat.id] = {}
     bot.send_message(message.chat.id, 
-                     "👋 Welcome to Laptop Selector Bot! 🖥️\n"
-                     "I'll help you find the perfect laptop based on your preferences.\n"
-                     "Use /help to see available commands.",
+                     "👋 Добро пожаловать в бот подбора ноутбуков! 🖥️\n"
+                     "Я помогу вам найти идеальный ноутбук по вашим предпочтениям.\n"
+                     "Используйте /help для просмотра доступных команд.",
                      reply_markup=create_main_keyboard())
 
 @bot.message_handler(commands=['help'])
 def help(message):
     help_text = (
-        "📋 Available commands:\n"
-        "/start - Start the bot 🚀\n"
-        "/help - Show this help message ℹ️\n"
-        "/reload - Reload the bot 🔄\n"
-        "/reset - Reset your preferences 🔁\n\n"
-        "To select a laptop, click 'Start Selection 🚀' and follow the prompts."
+        "📋 Доступные команды:\n"
+        "/start - Запустить бота 🚀\n"
+        "/help - Показать это сообщение ℹ️\n"
+        "/reload - Перезагрузить бота 🔄\n"
+        "/reset - Сбросить выбранные характеристики 🔁\n\n"
+        "Для подбора ноутбука нажмите 'Начать подбор 🚀' и следуйте инструкциям."
     )
     bot.send_message(message.chat.id, help_text)
 
 @bot.message_handler(commands=['reload'])
 def reload(message):
-    bot.send_message(message.chat.id, "🔄 Reloading bot...")
+    bot.send_message(message.chat.id, "🔄 Перезагрузка бота...")
     with open(RELOAD_FLAG, 'w') as f:
         f.write(str(message.chat.id))
     python = sys.executable
@@ -104,50 +105,47 @@ def reload(message):
 @bot.message_handler(commands=['reset'])
 def reset(message):
     user_preferences[message.chat.id] = {}
-    bot.send_message(message.chat.id, "🔄 Your preferences have been reset!", 
+    bot.send_message(message.chat.id, "🔄 Все выбранные характеристики сброшены!", 
                      reply_markup=create_main_keyboard())
 
-@bot.message_handler(func=lambda message: message.text == 'Reset 🔁')
+@bot.message_handler(func=lambda message: message.text == 'Сбросить 🔁')
 def reset_button(message):
     user_preferences[message.chat.id] = {}
-    bot.send_message(message.chat.id, "🔄 Your preferences have been reset!")
+    bot.send_message(message.chat.id, "🔄 Все выбранные характеристики сброшены!")
     bot.send_message(message.chat.id, 
-                     "🔍 Please select the specification you want to set:",
+                     "🔍 Выберите характеристику, которую хотите установить:",
                      reply_markup=create_spec_keyboard())
 
-@bot.message_handler(func=lambda message: message.text == 'Start Selection 🚀')
+@bot.message_handler(func=lambda message: message.text == 'Начать подбор 🚀')
 def start_selection(message):
     bot.send_message(message.chat.id, 
-                     "🔍 Please select the specification you want to set:",
+                     "🔍 Выберите характеристику, которую хотите установить:",
                      reply_markup=create_spec_keyboard())
 
-@bot.message_handler(func=lambda message: message.text == 'Back to Main ↩️')
+@bot.message_handler(func=lambda message: message.text == 'В меню ↩️')
 def back_to_main(message):
     bot.send_message(message.chat.id, 
-                     "🏠 Main menu:",
+                     "🏠 Главное меню:",
                      reply_markup=create_main_keyboard())
 
-@bot.message_handler(func=lambda message: message.text in ['Screen Size 📏', 'Refresh Rate 🔄', 'Resolution 🖥️', 
-                                                         'Processor 💻', 'Graphics Card 🎮', 'RAM 💾', 'Storage 💿'])
+@bot.message_handler(func=lambda message: message.text in ['Размер экрана 📏', 'Герцовка 🔄', 'Разрешение 🖥️', 
+                                                         'Процессор 💻', 'Видеокарта 🎮', 'Оперативная память 💾', 'Накопитель 💿'])
 def handle_spec_selection(message):
-    display_spec = ' '.join(message.text.split()[:-1])  # Remove the last word (emoji)
-    spec = SPEC_MAPPING[display_spec]  # Get the correct column name
+    display_spec = ' '.join(message.text.split()[:-1])  # Убираем эмодзи
+    spec_mapping = get_spec_mapping()
+    spec = spec_mapping[display_spec]
     df = load_data()
-    
     if df.empty:
-        bot.send_message(message.chat.id, "❌ No laptop data available!")
+        bot.send_message(message.chat.id, "❌ Нет данных о ноутбуках!")
         return
-
     filtered_df = get_filtered_options(df, user_preferences.get(message.chat.id, {}))
     available_options = get_available_options(filtered_df, spec)
-    
     if not available_options:
-        bot.send_message(message.chat.id, "❌ No available options for this specification with current filters!")
+        bot.send_message(message.chat.id, "❌ Нет доступных опций для этой характеристики с текущими фильтрами!")
         return
-
-    options_text = f"Available {display_spec} options:\n" + "\n".join([f"• {option}" for option in available_options])
+    options_text = f"Доступные варианты для '{display_spec}':\n" + "\n".join([f"• {option}" for option in available_options])
     bot.send_message(message.chat.id, 
-                     f"Select {display_spec}:\n\n{options_text}",
+                     f"Выберите {display_spec}:\n\n{options_text}",
                      reply_markup=create_options_keyboard(available_options, spec))
 
 @bot.callback_query_handler(func=lambda call: True)
@@ -155,37 +153,33 @@ def handle_callback(call):
     spec, value = call.data.split(':')
     if call.message.chat.id not in user_preferences:
         user_preferences[call.message.chat.id] = {}
-    
     user_preferences[call.message.chat.id][spec] = value
-    bot.answer_callback_query(call.id, f"✅ {spec} set to: {value}")
+    bot.answer_callback_query(call.id, f"✅ {spec} установлено: {value}")
     bot.edit_message_text(
-        f"✅ {spec} set to: {value}\n\nCurrent preferences:\n" + 
+        f"✅ {spec} установлено: {value}\n\nТекущие выбранные характеристики:\n" + 
         "\n".join([f"• {k}: {v}" for k, v in user_preferences[call.message.chat.id].items()]),
         call.message.chat.id,
         call.message.message_id
     )
 
-@bot.message_handler(func=lambda message: message.text == 'Find Laptops 🔍')
+@bot.message_handler(func=lambda message: message.text == 'Найти ноутбуки 🔍')
 def find_laptops(message):
     if message.chat.id not in user_preferences or not user_preferences[message.chat.id]:
-        bot.send_message(message.chat.id, "⚠️ Please set at least one specification first!")
+        bot.send_message(message.chat.id, "⚠️ Сначала выберите хотя бы одну характеристику!")
         return
-
     df = load_data()
     if df.empty:
-        bot.send_message(message.chat.id, "❌ No laptop data available!")
+        bot.send_message(message.chat.id, "❌ Нет данных о ноутбуках!")
         return
-
     filtered_df = df.copy()
     for spec, value in user_preferences[message.chat.id].items():
         if spec in df.columns:
             filtered_df = filtered_df[filtered_df[spec].astype(str).str.contains(str(value), case=False)]
-
     if filtered_df.empty:
-        bot.send_message(message.chat.id, "🔍 No laptops found matching your criteria!")
+        bot.send_message(message.chat.id, "🔍 Не найдено ноутбуков, соответствующих вашим критериям!")
     else:
         for _, laptop in filtered_df.iterrows():
-            result = "💻 Laptop Found:\n"
+            result = "💻 Найден ноутбук:\n"
             for column in df.columns:
                 result += f"{column}: {laptop[column]}\n"
             bot.send_message(message.chat.id, result)
@@ -194,7 +188,7 @@ if __name__ == '__main__':
     if os.path.exists(RELOAD_FLAG):
         with open(RELOAD_FLAG, 'r') as f:
             chat_id = int(f.read().strip())
-        bot.send_message(chat_id, "✅ Bot successfully reloaded!")
+        bot.send_message(chat_id, "✅ Бот успешно перезагружен!")
         os.remove(RELOAD_FLAG)
-    print("🤖 Bot started...")
+    print("🤖 Бот запущен...")
     bot.polling(none_stop=True)
