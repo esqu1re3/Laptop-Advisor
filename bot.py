@@ -41,9 +41,11 @@ def create_spec_keyboard():
     return keyboard
 
 # Главное меню
-def create_main_keyboard():
+def create_main_keyboard(is_admin=False):
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
     keyboard.row('Начать подбор 🚀', 'Помощь ℹ️')
+    if is_admin:
+        keyboard.row('Очистить чат 🧹')
     return keyboard
 
 # Словарь соответствия характеристик и колонок
@@ -80,11 +82,12 @@ def get_filtered_options(df, user_prefs):
 @bot.message_handler(commands=['start'])
 def start(message):
     user_preferences[message.chat.id] = {}
+    is_admin = (message.from_user.id == ADMIN_ID)
     bot.send_message(message.chat.id, 
                      "👋 Добро пожаловать в бот подбора ноутбуков! 🖥️\n"
                      "Я помогу вам найти идеальный ноутбук по вашим предпочтениям.\n"
                      "Используйте /help для просмотра доступных команд.",
-                     reply_markup=create_main_keyboard())
+                     reply_markup=create_main_keyboard(is_admin))
 
 @bot.message_handler(commands=['help'])
 def help(message):
@@ -131,9 +134,10 @@ def start_selection(message):
 
 @bot.message_handler(func=lambda message: message.text == 'В меню ↩️')
 def back_to_main(message):
+    is_admin = (message.from_user.id == ADMIN_ID)
     bot.send_message(message.chat.id, 
                      "🏠 Главное меню:",
-                     reply_markup=create_main_keyboard())
+                     reply_markup=create_main_keyboard(is_admin))
 
 @bot.message_handler(func=lambda message: message.text in ['Размер экрана 📏', 'Герцовка 🔄', 'Разрешение 🖥️', 
                                                          'Процессор 💻', 'Видеокарта 🎮', 'Оперативная память 💾', 'Накопитель 💿'])
@@ -207,6 +211,27 @@ def find_laptops(message):
 @bot.message_handler(func=lambda message: message.text == 'Помощь ℹ️')
 def help_button(message):
     help(message)
+
+@bot.message_handler(func=lambda message: message.text == 'Очистить чат 🧹')
+def clear_chat(message):
+    if message.from_user.id != ADMIN_ID:
+        bot.send_message(message.chat.id, "⛔️ У вас нет прав для этой операции.")
+        return
+    cleaning_msg = bot.send_message(message.chat.id, "🧹 Очищаю чат...")
+    # Сразу удаляем сообщение 'Очищаю чат...'
+    try:
+        bot.delete_message(message.chat.id, cleaning_msg.message_id)
+    except Exception:
+        pass
+    # Удаляем последние 100 сообщений (бот может удалять только свои и, если админ, чужие тоже)
+    try:
+        for msg_id in range(message.message_id, message.message_id-100, -1):
+            try:
+                bot.delete_message(message.chat.id, msg_id)
+            except Exception:
+                pass
+    except Exception:
+        pass
 
 if __name__ == '__main__':
     if os.path.exists(RELOAD_FLAG):
