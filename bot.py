@@ -5,6 +5,8 @@ import sys
 from telebot import types
 from dotenv import load_dotenv
 
+RELOAD_FLAG = 'reload.flag'
+
 # Load environment variables
 load_dotenv()
 
@@ -31,6 +33,7 @@ def create_spec_keyboard():
     keyboard.row('Screen Size 📏', 'Refresh Rate 🔄', 'Resolution 🖥️')
     keyboard.row('Processor 💻', 'Graphics Card 🎮', 'RAM 💾')
     keyboard.row('Storage 💿', 'Find Laptops 🔍', 'Back to Main ↩️')
+    keyboard.row('Reset 🔁')
     return keyboard
 
 # Create keyboard for main menu
@@ -93,15 +96,24 @@ def help(message):
 @bot.message_handler(commands=['reload'])
 def reload(message):
     bot.send_message(message.chat.id, "🔄 Reloading bot...")
+    with open(RELOAD_FLAG, 'w') as f:
+        f.write(str(message.chat.id))
     python = sys.executable
     os.execl(python, python, *sys.argv)
-    bot.send_message(message.chat.id, "✅ Bot successfully reloaded!")
 
 @bot.message_handler(commands=['reset'])
 def reset(message):
     user_preferences[message.chat.id] = {}
     bot.send_message(message.chat.id, "🔄 Your preferences have been reset!", 
                      reply_markup=create_main_keyboard())
+
+@bot.message_handler(func=lambda message: message.text == 'Reset 🔁')
+def reset_button(message):
+    user_preferences[message.chat.id] = {}
+    bot.send_message(message.chat.id, "🔄 Your preferences have been reset!")
+    bot.send_message(message.chat.id, 
+                     "🔍 Please select the specification you want to set:",
+                     reply_markup=create_spec_keyboard())
 
 @bot.message_handler(func=lambda message: message.text == 'Start Selection 🚀')
 def start_selection(message):
@@ -118,7 +130,6 @@ def back_to_main(message):
 @bot.message_handler(func=lambda message: message.text in ['Screen Size 📏', 'Refresh Rate 🔄', 'Resolution 🖥️', 
                                                          'Processor 💻', 'Graphics Card 🎮', 'RAM 💾', 'Storage 💿'])
 def handle_spec_selection(message):
-    # Extract the specification name without emoji
     display_spec = ' '.join(message.text.split()[:-1])  # Remove the last word (emoji)
     spec = SPEC_MAPPING[display_spec]  # Get the correct column name
     df = load_data()
@@ -127,7 +138,6 @@ def handle_spec_selection(message):
         bot.send_message(message.chat.id, "❌ No laptop data available!")
         return
 
-    # Get filtered options based on current preferences
     filtered_df = get_filtered_options(df, user_preferences.get(message.chat.id, {}))
     available_options = get_available_options(filtered_df, spec)
     
@@ -148,8 +158,6 @@ def handle_callback(call):
     
     user_preferences[call.message.chat.id][spec] = value
     bot.answer_callback_query(call.id, f"✅ {spec} set to: {value}")
-    
-    # Update the message to show current selection
     bot.edit_message_text(
         f"✅ {spec} set to: {value}\n\nCurrent preferences:\n" + 
         "\n".join([f"• {k}: {v}" for k, v in user_preferences[call.message.chat.id].items()]),
@@ -168,7 +176,6 @@ def find_laptops(message):
         bot.send_message(message.chat.id, "❌ No laptop data available!")
         return
 
-    # Filter laptops based on user preferences
     filtered_df = df.copy()
     for spec, value in user_preferences[message.chat.id].items():
         if spec in df.columns:
@@ -177,7 +184,6 @@ def find_laptops(message):
     if filtered_df.empty:
         bot.send_message(message.chat.id, "🔍 No laptops found matching your criteria!")
     else:
-        # Format and send results
         for _, laptop in filtered_df.iterrows():
             result = "💻 Laptop Found:\n"
             for column in df.columns:
@@ -185,5 +191,10 @@ def find_laptops(message):
             bot.send_message(message.chat.id, result)
 
 if __name__ == '__main__':
+    if os.path.exists(RELOAD_FLAG):
+        with open(RELOAD_FLAG, 'r') as f:
+            chat_id = int(f.read().strip())
+        bot.send_message(chat_id, "✅ Bot successfully reloaded!")
+        os.remove(RELOAD_FLAG)
     print("🤖 Bot started...")
     bot.polling(none_stop=True)
