@@ -190,25 +190,31 @@ def find_laptops(message):
     if filtered_df.empty:
         bot.send_message(message.chat.id, "🔍 Не найдено ноутбуков, соответствующих вашим критериям!")
     else:
-        # Сопоставление колонок и русских названий
-        column_rus = {
+        # Сопоставление колонок и русских названий с эмодзи
+        column_rus_emoji = {
             'Model': 'Модель',
-            'Screen Size': 'Размер экрана',
-            'Refresh Rate': 'Герцовка',
-            'Resolution': 'Разрешение',
-            'Processor': 'Процессор',
-            'Graphics Card': 'Видеокарта',
-            'RAM': 'Оперативная память',
-            'Storage': 'Накопитель',
-            'Price': 'Цена'
+            'Screen Size': '📏 Размер экрана',
+            'Refresh Rate': '🔄 Частота обновления',
+            'Resolution': '🖥️ Разрешение экрана',
+            'Processor': '💻 Процессор',
+            'Graphics Card': '🎮 Видеокарта',
+            'RAM': '💾 Объем оперативной памяти',
+            'Storage': '💿 Объем постоянной памяти',
+            'Price': '💰 Цена'
         }
         for _, laptop in filtered_df.iterrows():
             result = "💻 Найден ноутбук:\n"
             for column in df.columns:
                 if column not in ['Images', 'Link']:
                     value = laptop[column]
-                    rus_name = column_rus.get(column, column)
-                    result += f"{rus_name}: {value}\n"
+                    rus_emoji = column_rus_emoji.get(column, column)
+                    # Добавляем единицы измерения для некоторых полей
+                    if column == 'Refresh Rate':
+                        result += f"{rus_emoji}: {value} Гц\n"
+                    elif column == 'Price':
+                        result += f"{rus_emoji}: {value}\n"
+                    else:
+                        result += f"{rus_emoji}: {value}\n"
             # Добавляем ссылку, если есть
             if 'Link' in df.columns and pd.notna(laptop['Link']) and str(laptop['Link']).strip():
                 result += f"🔗 [Ссылка на ноутбук]({laptop['Link']})\n"
